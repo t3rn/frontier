@@ -36,6 +36,8 @@ pallet-timestamp = {git = "https://github.com/paritytech/substrate", branch = "p
 
 fp-evm = { version = "3.0.0-dev", default-features = false, path = "../../primitives/evm" }
 
+xbi-executor = { path = "../../../../polkadot-17/xcm/xbi-executor", default-features = false }
+
 [features]
 default = ["std"]
 std = [

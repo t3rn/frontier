@@ -148,6 +148,53 @@ pub mod pallet {
 		}
 	}
 
+	use xbi_executor::primitives::evm::Evm;
+	impl<T: Config> Evm<T> for Pallet<T> {
+		fn call(
+			origin: OriginFor<T>,
+			source: H160,
+			target: H160,
+			input: Vec<u8>,
+			value: U256,
+			gas_limit: u64,
+			max_fee_per_gas: U256,
+			max_priority_fee_per_gas: Option<U256>,
+			nonce: Option<U256>,
+			access_list: Vec<(H160, Vec<H256>)>,
+		) -> DispatchResultWithPostInfo {
+			T::CallOrigin::ensure_address_origin(&source, origin)?;
+
+			let info = T::Runner::call(
+				source,
+				target,
+				input,
+				value,
+				gas_limit,
+				Some(max_fee_per_gas),
+				max_priority_fee_per_gas,
+				nonce,
+				access_list,
+				T::config(),
+			)?;
+
+			match info.exit_reason {
+				ExitReason::Succeed(_) => {
+					Pallet::<T>::deposit_event(Event::<T>::Executed(target));
+				}
+				_ => {
+					Pallet::<T>::deposit_event(Event::<T>::ExecutedFailed(target));
+				}
+			};
+
+			Ok(PostDispatchInfo {
+				actual_weight: Some(T::GasWeightMapping::gas_to_weight(
+					info.used_gas.unique_saturated_into(),
+				)),
+				pays_fee: Pays::No,
+			})
+		}
+	}
+
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		/// Withdraw balance from EVM into currency/balances pallet.
@@ -406,16 +453,16 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn account_storages)]
 	pub type AccountStorages<T: Config> =
-		StorageDoubleMap<_, Blake2_128Concat, H160, Blake2_128Concat, H256, H256, ValueQuery>;
+	StorageDoubleMap<_, Blake2_128Concat, H160, Blake2_128Concat, H256, H256, ValueQuery>;
 }
 
 /// Type alias for currency balance.
 pub type BalanceOf<T> =
-	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 /// Type alias for negative imbalance during fees
 type NegativeImbalanceOf<C, T> =
-	<C as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance;
+<C as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance;
 
 /// Trait that outputs the current transaction gas price.
 pub trait FeeCalculator {
@@ -453,8 +500,8 @@ pub trait EnsureAddressOrigin<OuterOrigin> {
 pub struct EnsureAddressSame;
 
 impl<OuterOrigin> EnsureAddressOrigin<OuterOrigin> for EnsureAddressSame
-where
-	OuterOrigin: Into<Result<RawOrigin<H160>, OuterOrigin>> + From<RawOrigin<H160>>,
+	where
+		OuterOrigin: Into<Result<RawOrigin<H160>, OuterOrigin>> + From<RawOrigin<H160>>,
 {
 	type Success = H160;
 
@@ -470,8 +517,8 @@ where
 pub struct EnsureAddressRoot<AccountId>(sp_std::marker::PhantomData<AccountId>);
 
 impl<OuterOrigin, AccountId> EnsureAddressOrigin<OuterOrigin> for EnsureAddressRoot<AccountId>
-where
-	OuterOrigin: Into<Result<RawOrigin<AccountId>, OuterOrigin>> + From<RawOrigin<AccountId>>,
+	where
+		OuterOrigin: Into<Result<RawOrigin<AccountId>, OuterOrigin>> + From<RawOrigin<AccountId>>,
 {
 	type Success = ();
 
@@ -499,8 +546,8 @@ impl<OuterOrigin, AccountId> EnsureAddressOrigin<OuterOrigin> for EnsureAddressN
 pub struct EnsureAddressTruncated;
 
 impl<OuterOrigin> EnsureAddressOrigin<OuterOrigin> for EnsureAddressTruncated
-where
-	OuterOrigin: Into<Result<RawOrigin<AccountId32>, OuterOrigin>> + From<RawOrigin<AccountId32>>,
+	where
+		OuterOrigin: Into<Result<RawOrigin<AccountId32>, OuterOrigin>> + From<RawOrigin<AccountId32>>,
 {
 	type Success = AccountId32;
 
@@ -679,18 +726,18 @@ pub trait OnChargeEVMTransaction<T: Config> {
 pub struct EVMCurrencyAdapter<C, OU>(sp_std::marker::PhantomData<(C, OU)>);
 
 impl<T, C, OU> OnChargeEVMTransaction<T> for EVMCurrencyAdapter<C, OU>
-where
-	T: Config,
-	C: Currency<<T as frame_system::Config>::AccountId>,
-	C::PositiveImbalance: Imbalance<
-		<C as Currency<<T as frame_system::Config>::AccountId>>::Balance,
-		Opposite = C::NegativeImbalance,
-	>,
-	C::NegativeImbalance: Imbalance<
-		<C as Currency<<T as frame_system::Config>::AccountId>>::Balance,
-		Opposite = C::PositiveImbalance,
-	>,
-	OU: OnUnbalanced<NegativeImbalanceOf<C, T>>,
+	where
+		T: Config,
+		C: Currency<<T as frame_system::Config>::AccountId>,
+		C::PositiveImbalance: Imbalance<
+			<C as Currency<<T as frame_system::Config>::AccountId>>::Balance,
+			Opposite = C::NegativeImbalance,
+		>,
+		C::NegativeImbalance: Imbalance<
+			<C as Currency<<T as frame_system::Config>::AccountId>>::Balance,
+			Opposite = C::PositiveImbalance,
+		>,
+		OU: OnUnbalanced<NegativeImbalanceOf<C, T>>,
 {
 	// Kept type as Option to satisfy bound of Default
 	type LiquidityInfo = Option<NegativeImbalanceOf<C, T>>;
@@ -703,7 +750,7 @@ where
 			WithdrawReasons::FEE,
 			ExistenceRequirement::AllowDeath,
 		)
-		.map_err(|_| Error::<T>::BalanceLow)?;
+			.map_err(|_| Error::<T>::BalanceLow)?;
 		Ok(Some(imbalance))
 	}
 
@@ -761,10 +808,10 @@ where
 /// Implementation for () does not specify what to do with imbalance
 impl<T> OnChargeEVMTransaction<T> for ()
 	where
-	T: Config,
-	<T::Currency as Currency<<T as frame_system::Config>::AccountId>>::PositiveImbalance:
+		T: Config,
+		<T::Currency as Currency<<T as frame_system::Config>::AccountId>>::PositiveImbalance:
 		Imbalance<<T::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance, Opposite = <T::Currency as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance>,
-	<T::Currency as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance:
+		<T::Currency as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance:
 		Imbalance<<T::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance, Opposite = <T::Currency as Currency<<T as frame_system::Config>::AccountId>>::PositiveImbalance>, {
 	// Kept type as Option to satisfy bound of Default
 	type LiquidityInfo = Option<NegativeImbalanceOf<T::Currency, T>>;
